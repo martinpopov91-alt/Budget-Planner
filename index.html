@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Simple Budget Planner - Full Dashboard v7 (Flexible Goals)</title>
+    <title>Simple Budget Planner - Full Dashboard v8 (Daily/Weekly Metrics)</title>
     <style>
         :root {
             --bg-color: #121212;
@@ -136,6 +136,8 @@
             border-radius: 8px;
             border: 1px solid var(--border-color);
             position: relative;
+            display: flex;
+            flex-direction: column;
         }
 
         .big-number {
@@ -147,6 +149,33 @@
         .positive { color: var(--accent-green); }
         .negative { color: var(--accent-red); }
 
+        /* --- Budget Breakdown Table (NEW) --- */
+        .budget-breakdown {
+            margin-top: 15px;
+            border-top: 1px solid #333;
+            padding-top: 15px;
+            display: grid;
+            grid-template-columns: 1fr 1fr 1fr;
+            gap: 10px;
+            text-align: center;
+        }
+        .breakdown-item {
+            display: flex;
+            flex-direction: column;
+        }
+        .breakdown-label {
+            font-size: 0.75em;
+            color: var(--text-muted);
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            margin-bottom: 4px;
+        }
+        .breakdown-value {
+            font-weight: bold;
+            font-size: 1.1em;
+            color: #fff;
+        }
+
         /* Paycheck Counter Style */
         .paycheck-counter {
             background-color: #333;
@@ -155,8 +184,9 @@
             border-radius: 15px;
             font-size: 0.85em;
             display: inline-block;
-            margin-top: 10px;
+            margin-top: 15px;
             border: 1px solid #555;
+            align-self: flex-start;
         }
         .paycheck-counter span {
             color: var(--accent-blue);
@@ -198,23 +228,10 @@
         .action-col { width: 60px; text-align: right; }
 
         /* --- Drag and Drop Styles --- */
-        tr[draggable="true"] {
-            cursor: grab;
-        }
-        tr[draggable="true"]:active {
-            cursor: grabbing;
-        }
-        tr.drag-over {
-            background-color: #333;
-            border-top: 2px dashed var(--accent-blue);
-            border-bottom: 2px dashed var(--accent-blue);
-        }
-        .drag-handle {
-            cursor: grab;
-            color: #555;
-            margin-right: 5px;
-            font-size: 1.2em;
-        }
+        tr[draggable="true"] { cursor: grab; }
+        tr[draggable="true"]:active { cursor: grabbing; }
+        tr.drag-over { background-color: #333; border-top: 2px dashed var(--accent-blue); border-bottom: 2px dashed var(--accent-blue); }
+        .drag-handle { cursor: grab; color: #555; margin-right: 5px; font-size: 1.2em; }
         .drag-handle:hover { color: #888; }
 
         /* --- Inputs --- */
@@ -278,20 +295,9 @@
             padding: 15px;
             margin-bottom: 10px;
         }
-        /* Style for Simple Tracker (No Progress Bar) */
-        .goal-card.simple-tracker {
-            border-left: 4px solid var(--accent-green);
-        }
-        .goal-card.simple-tracker .goal-header {
-            margin-bottom: 0;
-        }
-        .simple-saved-amount {
-            font-size: 1.4em;
-            font-weight: bold;
-            color: var(--accent-green);
-            margin-top: 5px;
-        }
-
+        .goal-card.simple-tracker { border-left: 4px solid var(--accent-green); }
+        .goal-card.simple-tracker .goal-header { margin-bottom: 0; }
+        .simple-saved-amount { font-size: 1.4em; font-weight: bold; color: var(--accent-green); margin-top: 5px; }
         .goal-header { display: flex; justify-content: space-between; font-weight: bold; margin-bottom: 8px; }
         .goal-progress-bg { height: 10px; background: #333; border-radius: 5px; overflow: hidden; margin-bottom: 8px; }
         .goal-progress-fill { height: 100%; background: var(--accent-purple); transition: width 0.5s; }
@@ -375,6 +381,22 @@
             <h3>Amount Left To Spend</h3>
             <div class="big-number" id="left-to-spend">0.00</div>
             <div style="font-size: 0.9em; color: var(--text-muted);">Income (Inc. Rollover) - Outflow</div>
+            
+            <div class="budget-breakdown">
+                <div class="breakdown-item">
+                    <span class="breakdown-label">Daily Budget</span>
+                    <span class="breakdown-value" id="daily-budget" style="color:var(--accent-blue)">-</span>
+                </div>
+                <div class="breakdown-item">
+                    <span class="breakdown-label">Weekly Budget</span>
+                    <span class="breakdown-value" id="weekly-budget" style="color:var(--accent-blue)">-</span>
+                </div>
+                <div class="breakdown-item">
+                    <span class="breakdown-label">Days Left</span>
+                    <span class="breakdown-value" id="days-remaining">-</span>
+                </div>
+            </div>
+
             <div id="paycheck-counter-display" class="paycheck-counter" style="display:none;">
                 <span id="days-count">0</span> Days until Paycheck
             </div>
@@ -1092,6 +1114,34 @@
         const elLeft = document.getElementById('left-to-spend');
         elLeft.innerText = formatCurrency(leftToSpend);
         elLeft.className = leftToSpend >= 0 ? "big-number positive" : "big-number negative";
+
+        // --- Daily / Weekly Logic (NEW) ---
+        const elDaily = document.getElementById('daily-budget');
+        const elWeekly = document.getElementById('weekly-budget');
+        const elDaysRem = document.getElementById('days-remaining');
+
+        let daysLeft = 0;
+        if (settings.endDate) {
+            const today = new Date();
+            today.setHours(0,0,0,0);
+            const end = new Date(settings.endDate);
+            end.setHours(0,0,0,0);
+            const diffTime = end - today;
+            daysLeft = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+        }
+
+        elDaysRem.innerText = daysLeft > 0 ? daysLeft : "0";
+
+        if (daysLeft > 0 && leftToSpend > 0) {
+            const daily = leftToSpend / daysLeft;
+            const weekly = daily * 7;
+            elDaily.innerText = formatCurrency(daily);
+            elWeekly.innerText = formatCurrency(weekly);
+        } else {
+            elDaily.innerText = formatCurrency(0);
+            elWeekly.innerText = formatCurrency(0);
+        }
+
 
         // --- Paycheck Counter Logic ---
         const elCounterDisplay = document.getElementById('paycheck-counter-display');
