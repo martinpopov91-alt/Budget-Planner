@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Simple Budget Planner - Cloud Sync Edition</title>
+    <title>Simple Budget Planner - Full Dashboard v7 (Flexible Goals)</title>
     <style>
         :root {
             --bg-color: #121212;
@@ -197,6 +197,26 @@
         .money-col { text-align: right; font-family: monospace; font-size: 1.1em; width: 100px; }
         .action-col { width: 60px; text-align: right; }
 
+        /* --- Drag and Drop Styles --- */
+        tr[draggable="true"] {
+            cursor: grab;
+        }
+        tr[draggable="true"]:active {
+            cursor: grabbing;
+        }
+        tr.drag-over {
+            background-color: #333;
+            border-top: 2px dashed var(--accent-blue);
+            border-bottom: 2px dashed var(--accent-blue);
+        }
+        .drag-handle {
+            cursor: grab;
+            color: #555;
+            margin-right: 5px;
+            font-size: 1.2em;
+        }
+        .drag-handle:hover { color: #888; }
+
         /* --- Inputs --- */
         input[type="number"], input[type="text"], input[type="date"], input[type="password"], select {
             background-color: var(--input-bg);
@@ -258,6 +278,20 @@
             padding: 15px;
             margin-bottom: 10px;
         }
+        /* Style for Simple Tracker (No Progress Bar) */
+        .goal-card.simple-tracker {
+            border-left: 4px solid var(--accent-green);
+        }
+        .goal-card.simple-tracker .goal-header {
+            margin-bottom: 0;
+        }
+        .simple-saved-amount {
+            font-size: 1.4em;
+            font-weight: bold;
+            color: var(--accent-green);
+            margin-top: 5px;
+        }
+
         .goal-header { display: flex; justify-content: space-between; font-weight: bold; margin-bottom: 8px; }
         .goal-progress-bg { height: 10px; background: #333; border-radius: 5px; overflow: hidden; margin-bottom: 8px; }
         .goal-progress-fill { height: 100%; background: var(--accent-purple); transition: width 0.5s; }
@@ -391,7 +425,10 @@
         </div>
 
         <div class="tracker-section">
-            <div class="tracker-header"><h3>Expenses</h3></div>
+            <div class="tracker-header">
+                <h3>Expenses</h3>
+                <span style="font-size:0.7em; color:#666">Drag rows to reorder</span>
+            </div>
             <div id="expenses-table-container"></div>
             <button class="btn-add-cat" onclick="promptAddCategory('Expenses')">+ Add Expense Category</button>
         </div>
@@ -492,27 +529,18 @@
         </div>
 
         <div class="instruction-step">
-            <h3>STEP 3: BONUS: GOAL TRACKER</h3>
-            <p>Visualise your Goals, their distribution and monthly contribution targets.</p>
+            <h3>STEP 3: GOAL TRACKER (UPDATED)</h3>
+            <p>You can now use this section for two purposes:</p>
+            <ul style="color:#ccc; margin-left: 20px;">
+                <li><strong>Full Goal:</strong> Set a Target Amount and Date to see a progress bar.</li>
+                <li><strong>Simple Saver:</strong> Leave the Target Amount empty (or 0) to just track your total saved balance for that category.</li>
+            </ul>
         </div>
 
         <div class="instruction-step">
             <h3>STEP 4: GOAL SETTING</h3>
             <p>Start by writing the name of your goal (create a new "Savings" category), click the <span style="color:var(--accent-purple)">⚙️</span> icon.</p>
-            <p>Proceed to indicate the overall goal amount in the Goal column and then indicate the starting amount, in case you have already saved a specific amount.</p>
-            <p>Select start and end date.</p>
-        </div>
-
-        <div class="instruction-step">
-            <h3>STEP 5: GOAL LEDGER (CONTRIBUTIONS)</h3>
-            <p>Record your contributions using the <strong>Transaction Tracker</strong> (select "Savings" type).</p>
-            <p>Use the Date, Goal (Category) and Amount as Mandatory columns.</p>
-        </div>
-
-        <div class="instruction-step">
-            <h3>STEP 6: GOAL TRACKER DASHBOARD</h3>
-            <p>Track your progress against the goal amount and your monthly contributions from the Transaction Tracker.</p>
-            <div class="instruction-note">IMPORTANT: Everything is automated.</div>
+            <p>Enter a Target Amount to create a Goal, or leave it blank to create a simple Savings Tracker.</p>
         </div>
     </div>
 </div>
@@ -576,8 +604,8 @@
         <p>For Savings Category: <strong id="goal-cat-display"></strong></p>
         
         <div class="form-group" style="margin-bottom: 15px;">
-            <label>Total Goal Target Amount</label>
-            <input type="number" id="goal-target" placeholder="0.00">
+            <label>Total Goal Target Amount (Optional)</label>
+            <input type="number" id="goal-target" placeholder="Leave empty for simple tracker">
         </div>
         <div class="form-group" style="margin-bottom: 15px;">
             <label>Starting Balance (Already Saved)</label>
@@ -585,7 +613,7 @@
             <span style="font-size:0.7em; color:#888;">Money set aside before this month/budget period.</span>
         </div>
         <div class="form-group" style="margin-bottom: 20px;">
-            <label>Target Date</label>
+            <label>Target Date (Optional)</label>
             <input type="date" id="goal-date">
         </div>
 
@@ -599,11 +627,33 @@
 <script>
     // --- Initial Data ---
     const defaultBudgetData = {
-        Income: { "Paycheck": 0, "Business": 0, "Side Hustle": 0, "Interest Income": 0, "Dividends": 0 },
-        Bills: { "Internet": 0, "Water": 0, "Electricity": 0, "Mobile": 0, "Gym": 0, "Health Insurance": 0, "Rent": 0, "Gas": 0, "Spotify": 0, "Netflix": 0 },
-        Expenses: { "Food": 0, "Dining Out": 0, "Transportation": 0, "Household": 0, "Education": 0, "Health": 0, "Beauty": 0, "Gifts": 0, "Self-development": 0, "Entertainment": 0 },
-        Savings: { "Car": 0, "Travel": 0, "Renovation": 0, "Emergency Fund": 0 },
-        Debt: { "Student Loan": 0, "Credit Card": 0 }
+        Income: { 
+            "Wage, invoices": 0, "Sale": 0, "Rental income": 0, "Refunds (tax, purchase)": 0, 
+            "Lottery, gambling": 0, "Lending, renting": 0, "Interests, dividends": 0, 
+            "Gifts": 0, "Dues & grants": 0, "Child Support": 0, "Checks, coupons": 0 
+        },
+        Bills: { 
+            "Rent": 0, "Mortgage": 0, "Energy, utilities": 0, "Internet": 0, 
+            "Phone, cell phone": 0, "Property insurance": 0, "Vehicle insurance": 0, 
+            "Insurances": 0, "Taxes": 0, "Leasing": 0, "Services": 0 
+        },
+        Expenses: { 
+            "Groceries": 0, "Restaurant, fast-food": 0, "Bar, cafe": 0, "Coffee ☕": 0,
+            "Fuel": 0, "Public transport": 0, "Taxi": 0, "Vehicle maintenance": 0, "Parking": 0,
+            "Health care, doctor": 0, "Drug-store, chemist": 0, "Clothes & shoes": 0, 
+            "Home, garden": 0, "Electronics, accessories": 0, "Pets, animals": 0, 
+            "Kids": 0, "Education, development": 0, "Wellness, beauty": 0, 
+            "Active sport, fitness": 0, "Culture, sport events": 0, "Holiday, trips, hotels": 0, 
+            "Hobbies": 0, "Books, audio, subscriptions": 0, "TV, Streaming": 0, 
+            "Software, apps, games": 0, "Gifts, joy": 0, "Charity, gifts": 0
+        },
+        Savings: { 
+            "Savings": 0, "Financial investments": 0, "Realty": 0, 
+            "Vehicles, chattels": 0, "Collections": 0 
+        },
+        Debt: { 
+            "Loan, interests": 0, "Fines": 0, "Charges, Fees": 0, "Credit Card": 0 
+        }
     };
 
     // --- State Management ---
@@ -669,13 +719,13 @@
     }
 
     function resetData() {
-        if(confirm("Are you sure? This will delete all your transactions, manual entries, goal settings and reset everything.")) {
+        if(confirm("Are you sure? This will delete all your transactions, manual entries, goal settings and reset everything to the new category list.")) {
             localStorage.clear();
             location.reload();
         }
     }
 
-    // --- Cloud Sync Logic (NEW) ---
+    // --- Cloud Sync Logic ---
     const getCreds = () => JSON.parse(localStorage.getItem(GH_KEY) || '{"token":"","gist":""}');
     
     function saveGHCreds() {
@@ -832,6 +882,58 @@
         saveData();
     }
 
+    // --- DRAG AND DROP LOGIC ---
+    function handleDragStart(e, type, category) {
+        e.dataTransfer.setData("text/plain", JSON.stringify({ type, category }));
+        e.currentTarget.style.opacity = '0.5';
+    }
+
+    function handleDragOver(e) {
+        e.preventDefault();
+        e.currentTarget.classList.add('drag-over');
+    }
+
+    function handleDragLeave(e) {
+        e.currentTarget.classList.remove('drag-over');
+    }
+
+    function handleDrop(e, targetType, targetCategory) {
+        e.preventDefault();
+        e.currentTarget.classList.remove('drag-over');
+        e.currentTarget.style.opacity = '1';
+
+        try {
+            const data = JSON.parse(e.dataTransfer.getData("text/plain"));
+            if (data.type !== targetType) return; // Only allow reordering within same type
+            if (data.category === targetCategory) return; // Dropped on self
+
+            reorderCategories(targetType, data.category, targetCategory);
+        } catch (err) {
+            console.error("Drop failed", err);
+        }
+    }
+
+    function reorderCategories(type, srcCat, tgtCat) {
+        const keys = Object.keys(budgetData[type]);
+        const srcIdx = keys.indexOf(srcCat);
+        const tgtIdx = keys.indexOf(tgtCat);
+
+        if (srcIdx < 0 || tgtIdx < 0) return;
+
+        // Move source to target position
+        keys.splice(srcIdx, 1);
+        keys.splice(tgtIdx, 0, srcCat);
+
+        // Reconstruct object in new order
+        const newObj = {};
+        keys.forEach(key => {
+            newObj[key] = budgetData[type][key];
+        });
+
+        budgetData[type] = newObj;
+        saveData(); // This triggers renderAll()
+    }
+
     // --- Rendering ---
     function renderAll() {
         renderSection('Income', 'income-table-container');
@@ -850,10 +952,12 @@
         const actuals = getActuals()[type];
         const budgets = budgetData[type];
         
-        let allCats = new Set([...Object.keys(budgets), ...Object.keys(actuals)]);
+        let allCats = Object.keys(budgets);
+        Object.keys(actuals).forEach(c => { if(!allCats.includes(c)) allCats.push(c); });
         
         let html = `<table>
             <thead><tr>
+                <th style="width:30px"></th>
                 <th>Category</th>
                 <th style="text-align:right">Budget</th>
                 <th style="text-align:right">Actual</th>
@@ -881,7 +985,12 @@
                 goalBtn = `<button class="btn-goal" style="${hasGoal}" onclick="openGoalModal('${cat}')" title="Goal Settings">⚙️</button>`;
             }
 
-            html += `<tr>
+            html += `<tr draggable="true" 
+                         ondragstart="handleDragStart(event, '${type}', '${cat}')"
+                         ondragover="handleDragOver(event)"
+                         ondragleave="handleDragLeave(event)"
+                         ondrop="handleDrop(event, '${type}', '${cat}')">
+                <td style="text-align:center;"><span class="drag-handle">::</span></td>
                 <td>${cat}</td>
                 <td class="money-col">
                     <input type="number" class="table-input input-budget" 
@@ -899,6 +1008,7 @@
         });
 
         html += `<tr style="font-weight:bold; background:#252525">
+            <td></td>
             <td>TOTAL</td>
             <td class="money-col" style="color:var(--accent-blue)">${formatCurrency(totalBud)}</td>
             <td class="money-col">${formatCurrency(totalAct)}</td>
@@ -1034,7 +1144,7 @@
         });
     }
 
-    // --- Goal Tracker Render ---
+    // --- Goal Tracker Render (UPDATED FOR FLEXIBLE GOALS) ---
     function renderGoalTracker() {
         const container = document.getElementById('goal-tracker-container');
         container.innerHTML = '';
@@ -1049,46 +1159,61 @@
                 const config = goalData[cat];
                 const savedInPeriod = actuals[cat] || 0;
                 const totalSaved = (parseFloat(config.start) || 0) + savedInPeriod;
-                const target = parseFloat(config.target) || 1;
-                const progress = Math.min((totalSaved / target) * 100, 100);
+                const target = parseFloat(config.target) || 0;
 
-                let monthlyNeededMsg = '';
-                if (config.date) {
-                    const today = new Date();
-                    const targetDate = new Date(config.date);
-                    const diffMonths = (targetDate.getFullYear() - today.getFullYear()) * 12 + (targetDate.getMonth() - today.getMonth());
-                    const remaining = target - totalSaved;
-                    if (remaining > 0 && diffMonths > 0) {
-                        const monthly = remaining / diffMonths;
-                        monthlyNeededMsg = `<div style="margin-top:5px; color:#aaa; font-size:0.8em">Target: ${formatCurrency(monthly)}/mo</div>`;
-                    } else if (remaining <= 0) {
-                        monthlyNeededMsg = `<div style="margin-top:5px; color:var(--accent-green); font-size:0.8em">Goal Reached! 🎉</div>`;
-                    } else {
-                        monthlyNeededMsg = `<div style="margin-top:5px; color:var(--accent-red); font-size:0.8em">Due date passed</div>`;
+                if (target > 0) {
+                    // --- FULL GOAL RENDER ---
+                    const progress = Math.min((totalSaved / target) * 100, 100);
+                    let monthlyNeededMsg = '';
+                    if (config.date) {
+                        const today = new Date();
+                        const targetDate = new Date(config.date);
+                        const diffMonths = (targetDate.getFullYear() - today.getFullYear()) * 12 + (targetDate.getMonth() - today.getMonth());
+                        const remaining = target - totalSaved;
+                        if (remaining > 0 && diffMonths > 0) {
+                            const monthly = remaining / diffMonths;
+                            monthlyNeededMsg = `<div style="margin-top:5px; color:#aaa; font-size:0.8em">Target: ${formatCurrency(monthly)}/mo</div>`;
+                        } else if (remaining <= 0) {
+                            monthlyNeededMsg = `<div style="margin-top:5px; color:var(--accent-green); font-size:0.8em">Goal Reached! 🎉</div>`;
+                        } else {
+                            monthlyNeededMsg = `<div style="margin-top:5px; color:var(--accent-red); font-size:0.8em">Due date passed</div>`;
+                        }
                     }
-                }
 
-                container.innerHTML += `
-                <div class="goal-card">
-                    <div class="goal-header">
-                        <span>${cat}</span>
-                        <span>${progress.toFixed(1)}%</span>
-                    </div>
-                    <div class="goal-progress-bg">
-                        <div class="goal-progress-fill" style="width: ${progress}%"></div>
-                    </div>
-                    <div class="goal-stats">
-                        <span>Saved: ${formatCurrency(totalSaved)}</span>
-                        <span>Goal: ${formatCurrency(target)}</span>
-                    </div>
-                    ${monthlyNeededMsg}
-                </div>`;
+                    container.innerHTML += `
+                    <div class="goal-card">
+                        <div class="goal-header">
+                            <span>${cat}</span>
+                            <span>${progress.toFixed(1)}%</span>
+                        </div>
+                        <div class="goal-progress-bg">
+                            <div class="goal-progress-fill" style="width: ${progress}%"></div>
+                        </div>
+                        <div class="goal-stats">
+                            <span>Saved: ${formatCurrency(totalSaved)}</span>
+                            <span>Goal: ${formatCurrency(target)}</span>
+                        </div>
+                        ${monthlyNeededMsg}
+                    </div>`;
+                } else {
+                    // --- SIMPLE SAVER RENDER ---
+                    container.innerHTML += `
+                    <div class="goal-card simple-tracker">
+                        <div class="goal-header">
+                            <span>${cat}</span>
+                        </div>
+                        <div class="simple-saved-amount">${formatCurrency(totalSaved)}</div>
+                        <div class="goal-stats">
+                            <span style="font-size:0.8em; color:#777;">Total Balance</span>
+                        </div>
+                    </div>`;
+                }
             }
         }
 
         if (!hasGoals) {
             container.innerHTML = `<div style="grid-column: 1/-1; text-align: center; color: #555; padding: 20px; border: 1px dashed #444; border-radius: 8px;">
-                No Goals set. Go to <strong>Savings</strong> and click ⚙️ to set a target.
+                No Goals set. Go to <strong>Savings</strong> and click ⚙️ to set a target or start tracking.
             </div>`;
         }
     }
@@ -1178,13 +1303,13 @@
         }
     }
 
-    // --- Goal Management ---
+    // --- Goal Management (UPDATED) ---
     function openGoalModal(category) {
         currentGoalCategory = category;
         document.getElementById('goal-cat-display').innerText = category;
         
         const data = goalData[category] || { target: '', start: '', date: '' };
-        document.getElementById('goal-target').value = data.target;
+        document.getElementById('goal-target').value = data.target; // Can be 0 or empty
         document.getElementById('goal-start-bal').value = data.start;
         document.getElementById('goal-date').value = data.date;
 
@@ -1192,19 +1317,18 @@
     }
 
     function saveGoalSettings() {
-        const target = parseFloat(document.getElementById('goal-target').value);
+        const targetVal = document.getElementById('goal-target').value;
+        const target = parseFloat(targetVal);
         const start = parseFloat(document.getElementById('goal-start-bal').value);
         const date = document.getElementById('goal-date').value;
 
-        if (isNaN(target)) {
-            if (goalData[currentGoalCategory]) delete goalData[currentGoalCategory];
-        } else {
-            goalData[currentGoalCategory] = {
-                target: target,
-                start: isNaN(start) ? 0 : start,
-                date: date
-            };
-        }
+        // If target is empty or 0, we treat it as a "Simple Saver" (target=0)
+        goalData[currentGoalCategory] = {
+            target: (targetVal === '' || isNaN(target)) ? 0 : target,
+            start: isNaN(start) ? 0 : start,
+            date: date
+        };
+
         closeGoalModal();
         saveData();
     }
