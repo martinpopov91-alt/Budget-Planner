@@ -153,6 +153,15 @@
 
     <div class="settings-bar">
         <div class="form-group">
+            <label style="color: var(--accent-blue); font-weight: bold;">PERIOD</label>
+            <select id="s-period" onchange="applyDateFilter()">
+                <option value="custom">Custom Range</option>
+                <option value="thisWeek">This Week</option>
+                <option value="thisMonth" selected>This Month</option>
+                <option value="thisYear">This Year</option>
+            </select>
+        </div>
+        <div class="form-group">
             <label style="color: var(--accent-blue); font-weight: bold;">CURRENCY</label>
             <select id="s-currency" onchange="updateSettings()">
                 <option value="USD">USD ($)</option>
@@ -165,11 +174,11 @@
         </div>
         <div class="form-group">
             <label style="color: var(--accent-blue); font-weight: bold;">START DATE</label>
-            <input type="date" id="s-startDate" onchange="updateSettings()">
+            <input type="date" id="s-startDate" onchange="updateSettings()" oninput="switchToCustom()">
         </div>
         <div class="form-group">
             <label style="color: var(--accent-blue); font-weight: bold;">END DATE</label>
-            <input type="date" id="s-endDate" onchange="updateSettings()">
+            <input type="date" id="s-endDate" onchange="updateSettings()" oninput="switchToCustom()">
         </div>
         <div class="form-group" style="border-left: 1px solid #444; padding-left: 20px;">
             <label style="color: var(--accent-green); font-weight: bold;">NEXT PAYCHECK</label>
@@ -429,6 +438,7 @@
             <h3>1. GETTING STARTED</h3>
             <p><strong>Settings Bar:</strong> Located at the top, this is your global control center.</p>
             <ul style="color:#ccc; margin-left:20px; line-height:1.6;">
+                <li><strong>Period:</strong> Quick filter for This Week, Month, or Year.</li>
                 <li><strong>Currency:</strong> Updates symbols ($, €, £, etc.) globally.</li>
                 <li><strong>Dates:</strong> Define your budget period. "Days Left" and "Daily Budget" are calculated from the End Date.</li>
                 <li><strong>Next Paycheck:</strong> Sets the countdown timer in the Dashboard.</li>
@@ -526,7 +536,7 @@
     };
 
     // --- State Management ---
-    let cashFlowChartInstance = null; // Store chart instance
+    let cashFlowChartInstance = null; 
     let budgetData = {};
     let manualActuals = {};
     let transactions = [];
@@ -535,7 +545,6 @@
     let goalData = {}; 
     let investments = [];
 
-    // --- Keys for Sync ---
     const GH_KEY = 'BudgetPlanner_GH_Creds';
 
     let currentModalType = '';
@@ -543,11 +552,20 @@
 
     function init() {
         loadData();
-        // Set inputs based on loaded settings
+        
         document.getElementById('s-currency').value = settings.currency;
-        document.getElementById('s-startDate').value = settings.startDate;
-        document.getElementById('s-endDate').value = settings.endDate;
         document.getElementById('s-paycheckDate').value = settings.paycheckDate;
+        
+        // Handle initial date loading and period logic
+        if (settings.startDate && settings.endDate) {
+            document.getElementById('s-startDate').value = settings.startDate;
+            document.getElementById('s-endDate').value = settings.endDate;
+            document.getElementById('s-period').value = 'custom';
+        } else {
+            // Default to this month if no settings exist
+            document.getElementById('s-period').value = 'thisMonth';
+            applyDateFilter();
+        }
         
         document.getElementById('rollover-budget').value = rollover.budget == 0 ? '' : rollover.budget;
         document.getElementById('rollover-actual').value = rollover.actual == 0 ? '' : rollover.actual;
@@ -561,6 +579,46 @@
 
         renderAll();
         renderInvestments();
+    }
+
+    // --- Date Filter Logic ---
+    function applyDateFilter() {
+        const period = document.getElementById('s-period').value;
+        const startInput = document.getElementById('s-startDate');
+        const endInput = document.getElementById('s-endDate');
+        
+        if (period === 'custom') return;
+
+        const today = new Date();
+        let start = new Date(today);
+        let end = new Date(today);
+
+        const formatDate = (date) => {
+            const offset = date.getTimezoneOffset() * 60000;
+            return new Date(date - offset).toISOString().slice(0, 10);
+        };
+
+        if (period === 'thisWeek') {
+            const day = today.getDay();
+            const diff = today.getDate() - day + (day === 0 ? -6 : 1);
+            start.setDate(diff);
+            end.setDate(start.getDate() + 6);
+        } else if (period === 'thisMonth') {
+            start = new Date(today.getFullYear(), today.getMonth(), 1);
+            end = new Date(today.getFullYear(), today.getMonth() + 1, 0);
+        } else if (period === 'thisYear') {
+            start = new Date(today.getFullYear(), 0, 1);
+            end = new Date(today.getFullYear(), 11, 31);
+        }
+
+        startInput.value = formatDate(start);
+        endInput.value = formatDate(end);
+        
+        updateSettings();
+    }
+
+    function switchToCustom() {
+        document.getElementById('s-period').value = 'custom';
     }
 
     // --- TABS LOGIC ---
@@ -618,13 +676,13 @@
     }
 
     function resetData() {
-        if(confirm("Are you sure? This will delete all your transactions, manual entries, goal settings and reset everything.")) {
+        if(confirm("Are you sure? This will delete all your data.")) {
             localStorage.clear();
             location.reload();
         }
     }
 
-    // --- Cloud Sync Logic ---
+    // --- Cloud Sync ---
     const getCreds = () => JSON.parse(localStorage.getItem(GH_KEY) || '{"token":"","gist":""}');
     function saveGHCreds() {
         const token = document.getElementById('gh-token').value.trim();
@@ -731,7 +789,7 @@
         renderSection('Expenses', 'expenses-table-container');
         renderSection('Savings', 'savings-table-container');
         renderSection('Debt', 'debt-table-container');
-        renderSummaries(); // Draws Text Summaries + Chart
+        renderSummaries(); 
         renderTransactions();
         renderGoalTracker();
         updateCategorySelect();
@@ -765,7 +823,6 @@
         let summary = { Income: {}, Bills: {}, Expenses: {}, Savings: {}, Debt: {} };
         let actuals = getActuals();
 
-        // 1. Calculate Totals
         for(let type in summary) {
             let totalB = 0;
             let totalA = 0;
@@ -774,12 +831,10 @@
             summary[type] = { budget: totalB, actual: totalA };
         }
 
-        // --- RENDER CHART (Connected Here) ---
         if (typeof renderChart === "function") {
             renderChart(summary);
         }
 
-        // 2. Cash Flow Table
         const cfBody = document.getElementById('cashflow-body');
         cfBody.innerHTML = '';
         const labels = {Income: '+', Bills: '-', Expenses: '-', Savings: '-', Debt: '-'};
@@ -793,7 +848,6 @@
             </tr>`;
         }
 
-        // 3. Allocation Summary
         const allocationContainer = document.getElementById('allocation-container');
         allocationContainer.innerHTML = '';
         
@@ -832,17 +886,14 @@
             allocationContainer.innerHTML = table;
         }
 
-        // 4. Amount Left To Spend
         const totalIncomeActual = summary.Income.actual + rollover.actual;
         const totalOutflowActual = summary.Bills.actual + summary.Expenses.actual + summary.Savings.actual + summary.Debt.actual;
-        
         const leftToSpend = totalIncomeActual - totalOutflowActual;
 
         const elLeft = document.getElementById('left-to-spend');
         elLeft.innerText = formatCurrency(leftToSpend);
         elLeft.className = leftToSpend >= 0 ? "big-number positive" : "big-number negative";
 
-        // 5. Daily / Weekly Logic
         const elDaily = document.getElementById('daily-budget');
         const elWeekly = document.getElementById('weekly-budget');
         const elDaysRem = document.getElementById('days-remaining');
@@ -869,20 +920,15 @@
             elWeekly.innerText = formatCurrency(0);
         }
 
-        // 6. Paycheck Counter Logic
         const elCounterDisplay = document.getElementById('paycheck-counter-display');
-        
         if (settings.paycheckDate) {
             elCounterDisplay.style.display = 'inline-block';
-            
             const today = new Date();
             today.setHours(0,0,0,0);
             const target = new Date(settings.paycheckDate);
             target.setHours(0,0,0,0);
-            
             const diffTime = target - today;
             const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24)); 
-            
             if (diffDays < 0) {
                 elCounterDisplay.innerHTML = "Paycheck date passed!";
                 elCounterDisplay.style.color = "#888";
@@ -891,13 +937,11 @@
             } else {
                 elCounterDisplay.innerHTML = `<span id="days-count">${diffDays}</span> Days until Paycheck`;
             }
-
         } else {
             elCounterDisplay.style.display = 'none';
         }
     }
 
-    // --- CHART LOGIC (Dynamic Select) ---
     function renderChart(summary) {
         const ctx = document.getElementById('cashFlowChart').getContext('2d');
         const filter = document.getElementById('chart-filter').value;
@@ -907,7 +951,6 @@
             cashFlowChartInstance.destroy();
         }
 
-        // MODE 1: OVERVIEW
         if (filter === 'Overview') {
             const budgetIncome = summary.Income.budget + rollover.budget;
             const actualIncome = summary.Income.actual + rollover.actual;
@@ -934,13 +977,10 @@
                     }
                 }
             });
-        
-        // MODE 2: BREAKDOWN
         } else {
             const catLabels = [];
             const dataBudget = [];
             const dataActual = [];
-            
             let allCats = Object.keys(budgetData[filter] || {});
             Object.keys(actuals[filter] || {}).forEach(c => { if(!allCats.includes(c)) allCats.push(c); });
 
@@ -993,18 +1033,14 @@
         });
     }
 
-    // --- INVESTMENT LOGIC ---
     function addInvestmentLog() {
         const d = document.getElementById('i-date').value;
         const type = document.getElementById('i-type').value;
         const asset = document.getElementById('i-asset').value;
         const plat = document.getElementById('i-platform').value;
         const amt = parseFloat(document.getElementById('i-amount').value);
-
         if(!d || !asset || !amt) return alert("Date, Asset, and Amount required");
-        
         investments.push({ date:d, type, asset, platform:plat, amount:amt });
-        // clear inputs
         document.getElementById('i-asset').value = '';
         document.getElementById('i-platform').value = '';
         document.getElementById('i-amount').value = '';
@@ -1015,16 +1051,12 @@
         const tbody = document.getElementById('investment-body');
         tbody.innerHTML = '';
         let totInv = 0, totDiv = 0;
-
         const sorted = investments.sort((a,b) => new Date(b.date) - new Date(a.date));
-
         sorted.forEach((inv, idx) => {
             if(inv.type === 'Buy') totInv += inv.amount;
             if(inv.type === 'Dividend') totDiv += inv.amount;
-
             const badgeClass = inv.type === 'Buy' ? 'badge-buy' : 'badge-div';
             const badgeIcon = inv.type === 'Buy' ? '💰' : '💎';
-
             tbody.innerHTML += `<tr>
                 <td>${inv.date}</td>
                 <td><span class="invest-badge ${badgeClass}">${badgeIcon} ${inv.type}</span></td>
@@ -1034,7 +1066,6 @@
                 <td class="action-col"><button class="btn-delete" onclick="deleteInv(${idx})">&times;</button></td>
             </tr>`;
         });
-
         document.getElementById('inv-total-invested').innerText = formatCurrency(totInv);
         document.getElementById('inv-total-divs').innerText = formatCurrency(totDiv);
     }
@@ -1063,7 +1094,6 @@
         if (!hasGoals) container.innerHTML = `<div style="grid-column: 1/-1; text-align: center; color: #555; padding: 20px; border: 1px dashed #444; border-radius: 8px;">No Goals set.</div>`;
     }
 
-    // --- Helpers ---
     function updateBudgetAmount(t, c, v) { if(!budgetData[t]) budgetData[t]={}; budgetData[t][c]=parseFloat(v); saveData(); }
     function updateActualAmount(t, c, v) { if(!manualActuals[t]) manualActuals[t]={}; if(v==='') delete manualActuals[t][c]; else manualActuals[t][c]=parseFloat(v); saveData(); }
     function updateCategorySelect() { 
